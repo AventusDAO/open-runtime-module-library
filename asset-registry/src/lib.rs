@@ -14,7 +14,6 @@ use sp_runtime::{
 	DispatchResult,
 };
 use sp_std::prelude::*;
-use xcm::{v3::prelude::*, VersionedLocation};
 
 pub use impls::*;
 use module::*;
@@ -49,11 +48,19 @@ pub mod module {
 		/// potentially modifies the supplied metadata.
 		type AssetProcessor: AssetProcessor<
 			Self::AssetId,
-			AssetMetadata<Self::Balance, Self::CustomMetadata, Self::StringLimit>,
+			AssetMetadata<Self::Balance, Self::CustomMetadata, Self::AssetLocation, Self::StringLimit>,
 		>;
 
 		/// The balance type.
 		type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+
+		/// The type used to identify an asset's location. Can be an XCM Location,
+		/// or an Ethereum address.
+		type AssetLocation: Parameter
+			+ Member
+			+ TypeInfo
+			+ MaxEncodedLen
+			+ Ord;
 
 		/// The maximum length of a name or symbol.
 		#[pallet::constant]
@@ -85,11 +92,11 @@ pub mod module {
 	pub enum Event<T: Config> {
 		RegisteredAsset {
 			asset_id: T::AssetId,
-			metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::StringLimit>,
+			metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::AssetLocation, T::StringLimit>,
 		},
 		UpdatedAsset {
 			asset_id: T::AssetId,
-			metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::StringLimit>,
+			metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::AssetLocation, T::StringLimit>,
 		},
 	}
 
@@ -98,9 +105,9 @@ pub mod module {
 	#[pallet::getter(fn metadata)]
 	pub type Metadata<T: Config> = StorageMap<
 		_,
-		Twox64Concat,
+		Blake2_128Concat,
 		T::AssetId,
-		AssetMetadata<T::Balance, T::CustomMetadata, T::StringLimit>,
+		AssetMetadata<T::Balance, T::CustomMetadata, T::AssetLocation, T::StringLimit>,
 		OptionQuery,
 	>;
 
@@ -108,7 +115,7 @@ pub mod module {
 	/// messages.
 	#[pallet::storage]
 	#[pallet::getter(fn location_to_asset_id)]
-	pub type LocationToAssetId<T: Config> = StorageMap<_, Twox64Concat, Location, T::AssetId, OptionQuery>;
+	pub type LocationToAssetId<T: Config> = StorageMap<_, Blake2_128Concat, T::AssetLocation, T::AssetId, OptionQuery>;
 
 	/// The last processed asset id - used when assigning a sequential id.
 	#[pallet::storage]
@@ -155,7 +162,7 @@ pub mod module {
 		#[pallet::weight(T::WeightInfo::register_asset())]
 		pub fn register_asset(
 			origin: OriginFor<T>,
-			metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::StringLimit>,
+			metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::AssetLocation, T::StringLimit>,
 			asset_id: Option<T::AssetId>,
 		) -> DispatchResult {
 			T::AuthorityOrigin::ensure_origin(origin, &asset_id)?;
@@ -172,7 +179,7 @@ pub mod module {
 			name: Option<BoundedVec<u8, T::StringLimit>>,
 			symbol: Option<BoundedVec<u8, T::StringLimit>>,
 			existential_deposit: Option<T::Balance>,
-			location: Option<Option<VersionedLocation>>,
+			location: Option<Option<T::AssetLocation>>,
 			additional: Option<T::CustomMetadata>,
 		) -> DispatchResult {
 			T::AuthorityOrigin::ensure_origin(origin, &Some(asset_id.clone()))?;
@@ -195,7 +202,7 @@ pub mod module {
 impl<T: Config> Pallet<T> {
 	/// Register a new asset
 	pub fn do_register_asset(
-		metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::StringLimit>,
+		metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::AssetLocation, T::StringLimit>,
 		asset_id: Option<T::AssetId>,
 	) -> DispatchResult {
 		let (asset_id, metadata) = T::AssetProcessor::pre_register(asset_id, metadata)?;
@@ -212,7 +219,7 @@ impl<T: Config> Pallet<T> {
 	/// This function is useful in tests but it might also come in useful to
 	/// users.
 	pub fn do_register_asset_without_asset_processor(
-		metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::StringLimit>,
+		metadata: AssetMetadata<T::Balance, T::CustomMetadata, T::AssetLocation, T::StringLimit>,
 		asset_id: T::AssetId,
 	) -> DispatchResult {
 		Metadata::<T>::try_mutate(&asset_id, |maybe_metadata| -> DispatchResult {
@@ -239,7 +246,7 @@ impl<T: Config> Pallet<T> {
 		name: Option<BoundedVec<u8, T::StringLimit>>,
 		symbol: Option<BoundedVec<u8, T::StringLimit>>,
 		existential_deposit: Option<T::Balance>,
-		location: Option<Option<VersionedLocation>>,
+		location: Option<Option<T::AssetLocation>>,
 		additional: Option<T::CustomMetadata>,
 	) -> DispatchResult {
 		Metadata::<T>::try_mutate(&asset_id, |maybe_metadata| -> DispatchResult {
@@ -281,34 +288,27 @@ impl<T: Config> Pallet<T> {
 	}
 
 	pub fn fetch_metadata_by_location(
-		location: &Location,
-	) -> Option<AssetMetadata<T::Balance, T::CustomMetadata, T::StringLimit>> {
+		location: &T::AssetLocation,
+	) -> Option<AssetMetadata<T::Balance, T::CustomMetadata, T::AssetLocation, T::StringLimit>> {
 		let asset_id = LocationToAssetId::<T>::get(location)?;
 		Metadata::<T>::get(asset_id)
 	}
 
-	pub fn location(asset_id: &T::AssetId) -> Result<Option<Location>, DispatchError> {
-		Metadata::<T>::get(asset_id)
-			.and_then(|metadata| {
-				metadata
-					.location
-					.map(|location| location.try_into().map_err(|()| Error::<T>::BadVersion.into()))
-			})
-			.transpose()
+	pub fn location(asset_id: &T::AssetId) -> Result<Option<T::AssetLocation>, DispatchError> {
+		Ok(Metadata::<T>::get(asset_id).and_then(|metadata| metadata.location))
 	}
 
 	/// update LocationToAssetId mapping if the location changed
 	fn do_update_location(
 		asset_id: T::AssetId,
-		old_location: Option<VersionedLocation>,
-		new_location: Option<VersionedLocation>,
+		old_location: Option<T::AssetLocation>,
+		new_location: Option<T::AssetLocation>,
 	) -> DispatchResult {
 		// Update `LocationToAssetId` only if location changed
 		if new_location != old_location {
 			// remove the old location lookup if it exists
-			if let Some(ref old_location) = old_location {
-				let location: Location = old_location.clone().try_into().map_err(|()| Error::<T>::BadVersion)?;
-				LocationToAssetId::<T>::remove(location);
+			if let Some(old_location) = old_location {
+				LocationToAssetId::<T>::remove(old_location);
 			}
 
 			// insert new location
@@ -321,9 +321,7 @@ impl<T: Config> Pallet<T> {
 	}
 
 	/// insert location into the LocationToAssetId map
-	fn do_insert_location(asset_id: T::AssetId, location: VersionedLocation) -> DispatchResult {
-		// if the metadata contains a location, set the LocationToAssetId
-		let location: Location = location.try_into().map_err(|()| Error::<T>::BadVersion)?;
+	fn do_insert_location(asset_id: T::AssetId, location: T::AssetLocation) -> DispatchResult {
 		LocationToAssetId::<T>::try_mutate(location, |maybe_asset_id| {
 			ensure!(maybe_asset_id.is_none(), Error::<T>::ConflictingLocation);
 			*maybe_asset_id = Some(asset_id);

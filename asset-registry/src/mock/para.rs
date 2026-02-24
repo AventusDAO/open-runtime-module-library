@@ -11,6 +11,7 @@ use frame_support::{
 };
 use frame_system::{EnsureRoot, EnsureSignedBy};
 use orml_traits::{
+	asset_registry::AvnAssetLocation,
 	location::{AbsoluteReserveProvider, RelativeReserveProvider},
 	parameter_type_with_key, FixedConversionRateProvider, MultiCurrency,
 };
@@ -131,6 +132,7 @@ impl orml_asset_registry::Config for Runtime {
 	type CustomMetadata = CustomMetadata;
 	type AssetProcessor = orml_asset_registry::SequentialId<Runtime>;
 	type StringLimit = StringLimit;
+	type AssetLocation = AvnAssetLocation;
 	type WeightInfo = ();
 }
 
@@ -195,7 +197,7 @@ pub struct MyFixedConversionRateProvider;
 impl FixedConversionRateProvider for MyFixedConversionRateProvider {
 	fn get_fee_per_second(location: &Location) -> Option<u128> {
 		let metadata =
-			AssetRegistry::fetch_metadata_by_location(&location.clone().into_versioned().try_into().unwrap())?;
+			AssetRegistry::fetch_metadata_by_location(&AvnAssetLocation::Xcm(location.clone().into_versioned()))?;
 		Some(metadata.additional.fee_per_second)
 	}
 }

@@ -3,6 +3,7 @@ use sp_runtime::DispatchResult;
 use sp_std::fmt::Debug;
 use xcm::v5::prelude::*;
 use xcm::VersionedLocation;
+use sp_core::H160;
 
 pub trait WeightToFeeConverter {
 	fn convert_weight_to_fee(location: &Location, weight: Weight) -> Option<u128>;
@@ -19,6 +20,14 @@ pub trait AssetProcessor<AssetId, Metadata> {
 	}
 }
 
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Encode, Decode, DecodeWithMemTracking, MaxEncodedLen, TypeInfo)]
+pub enum AvnAssetLocation {
+    /// A Polkadot XCM location (relay chain assets, other parachain tokens, etc.)
+    Xcm(VersionedLocation),
+    /// An Ethereum token contract address
+    Ethereum(H160),
+}
+
 /// Data describing the asset properties.
 #[derive(
 	TypeInfo,
@@ -33,20 +42,32 @@ pub trait AssetProcessor<AssetId, Metadata> {
 )]
 #[codec(mel_bound(skip_type_params(StringLimit)))]
 #[scale_info(skip_type_params(StringLimit))]
-pub struct AssetMetadata<Balance, CustomMetadata, StringLimit: Get<u32>>
+pub struct AssetMetadata<Balance, CustomMetadata, Location, StringLimit: Get<u32>>
 where
 	Balance: Clone + Debug + Eq + PartialEq,
 	CustomMetadata: Parameter + Member + TypeInfo,
+	Location: Parameter + Member + TypeInfo,
 {
 	pub decimals: u32,
 	pub name: BoundedVec<u8, StringLimit>,
 	pub symbol: BoundedVec<u8, StringLimit>,
 	pub existential_deposit: Balance,
-	pub location: Option<VersionedLocation>,
+	pub location: Option<Location>,
 	pub additional: CustomMetadata,
 }
 
-pub trait Inspect {
+impl<Balance, CustomMetadata, StringLimit> AssetMetadata<Balance, CustomMetadata, AvnAssetLocation, StringLimit>
+where
+	Balance: Clone + Debug + Eq + PartialEq,
+	CustomMetadata: Parameter + Member + TypeInfo,
+	StringLimit: Get<u32>,
+{
+	pub fn is_eth_asset(&self) -> bool {
+		matches!(&self.location, Some(AvnAssetLocation::Ethereum(_)))
+	}
+}
+
+pub trait Inspect<Location: Parameter + Member + TypeInfo> {
 	/// AssetId type
 	type AssetId;
 	/// Balance type
@@ -59,17 +80,17 @@ pub trait Inspect {
 	fn asset_id(location: &Location) -> Option<Self::AssetId>;
 	fn metadata(
 		asset_id: &Self::AssetId,
-	) -> Option<AssetMetadata<Self::Balance, Self::CustomMetadata, Self::StringLimit>>;
+	) -> Option<AssetMetadata<Self::Balance, Self::CustomMetadata, Location, Self::StringLimit>>;
 	fn metadata_by_location(
 		location: &Location,
-	) -> Option<AssetMetadata<Self::Balance, Self::CustomMetadata, Self::StringLimit>>;
+	) -> Option<AssetMetadata<Self::Balance, Self::CustomMetadata, Location, Self::StringLimit>>;
 	fn location(asset_id: &Self::AssetId) -> Result<Option<Location>, DispatchError>;
 }
 
-pub trait Mutate: Inspect {
+pub trait Mutate<Location: Parameter + Member + TypeInfo>: Inspect<Location> {
 	fn register_asset(
 		asset_id: Option<Self::AssetId>,
-		metadata: AssetMetadata<Self::Balance, Self::CustomMetadata, Self::StringLimit>,
+		metadata: AssetMetadata<Self::Balance, Self::CustomMetadata, Location, Self::StringLimit>,
 	) -> DispatchResult;
 
 	fn update_asset(
@@ -78,7 +99,30 @@ pub trait Mutate: Inspect {
 		name: Option<BoundedVec<u8, Self::StringLimit>>,
 		symbol: Option<BoundedVec<u8, Self::StringLimit>>,
 		existential_deposit: Option<Self::Balance>,
-		location: Option<Option<VersionedLocation>>,
+		location: Option<Option<Location>>,
 		additional: Option<Self::CustomMetadata>,
 	) -> DispatchResult;
+}
+
+/// Custom metadata for Avn assets
+#[derive(
+	TypeInfo,
+	Encode,
+	Decode,
+	CloneNoBound,
+	EqNoBound,
+	PartialEqNoBound,
+	RuntimeDebugNoBound,
+	MaxEncodedLen,
+	DecodeWithMemTracking,
+)]
+pub struct AvnAssetMetadata {
+    /// Flag indicating whether this asset is the native token of an appchain.
+    pub appchain_native: bool,
+}
+
+impl AvnAssetMetadata {
+	pub fn is_appchain_native(&self) -> bool {
+		self.appchain_native
+	}
 }

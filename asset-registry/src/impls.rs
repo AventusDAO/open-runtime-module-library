@@ -12,17 +12,13 @@ use sp_runtime::{
 	ArithmeticError, FixedU128,
 };
 use sp_std::prelude::*;
-use xcm::VersionedLocation;
-use xcm::{
-	v3,
-	v5::{prelude::*, Weight as XcmWeight},
-};
+use xcm::v5::{prelude::*, Weight as XcmWeight};
 use xcm_builder::TakeRevenue;
 use xcm_executor::{traits::WeightTrader, AssetsInHolding};
 
 /// Alias for AssetMetadata to improve readability (and to placate clippy)
 pub type DefaultAssetMetadata<T> =
-	AssetMetadata<<T as Config>::Balance, <T as Config>::CustomMetadata, <T as Config>::StringLimit>;
+	AssetMetadata<<T as Config>::Balance, <T as Config>::CustomMetadata, <T as Config>::AssetLocation, <T as Config>::StringLimit>;
 
 /// An AssetProcessor that assigns a sequential ID
 pub struct SequentialId<T>(PhantomData<T>);
@@ -181,35 +177,37 @@ impl<T: Config> GetByKey<T::AssetId, T::Balance> for ExistentialDeposits<T> {
 	}
 }
 
-impl<T: Config> Inspect for Pallet<T> {
+impl<T: Config> Inspect<T::AssetLocation> for Pallet<T> {
 	type AssetId = T::AssetId;
 	type Balance = T::Balance;
 	type CustomMetadata = T::CustomMetadata;
 	type StringLimit = T::StringLimit;
 
-	fn asset_id(location: &Location) -> Option<Self::AssetId> {
-		Pallet::<T>::location_to_asset_id(v3::Location::try_from(location.clone().into_versioned()).ok()?)
+	fn asset_id(location: &T::AssetLocation) -> Option<Self::AssetId> {
+		Pallet::<T>::location_to_asset_id(location)
 	}
 
-	fn metadata(id: &Self::AssetId) -> Option<AssetMetadata<Self::Balance, Self::CustomMetadata, Self::StringLimit>> {
+	fn metadata(
+		id: &Self::AssetId,
+	) -> Option<AssetMetadata<Self::Balance, Self::CustomMetadata, T::AssetLocation, Self::StringLimit>> {
 		Pallet::<T>::metadata(id)
 	}
 
 	fn metadata_by_location(
-		location: &Location,
-	) -> Option<AssetMetadata<Self::Balance, Self::CustomMetadata, Self::StringLimit>> {
-		Pallet::<T>::fetch_metadata_by_location(&v3::Location::try_from(location.clone().into_versioned()).ok()?)
+		location: &T::AssetLocation,
+	) -> Option<AssetMetadata<Self::Balance, Self::CustomMetadata, T::AssetLocation, Self::StringLimit>> {
+		Pallet::<T>::fetch_metadata_by_location(location)
 	}
 
-	fn location(asset_id: &Self::AssetId) -> Result<Option<Location>, DispatchError> {
-		Pallet::<T>::location(asset_id).map(|l| l.and_then(|l| l.into_versioned().try_into().ok()))
+	fn location(asset_id: &Self::AssetId) -> Result<Option<T::AssetLocation>, DispatchError> {
+		Pallet::<T>::location(asset_id)
 	}
 }
 
-impl<T: Config> Mutate for Pallet<T> {
+impl<T: Config> Mutate<T::AssetLocation> for Pallet<T> {
 	fn register_asset(
 		asset_id: Option<Self::AssetId>,
-		metadata: AssetMetadata<Self::Balance, Self::CustomMetadata, Self::StringLimit>,
+		metadata: AssetMetadata<Self::Balance, Self::CustomMetadata, T::AssetLocation, Self::StringLimit>,
 	) -> DispatchResult {
 		Pallet::<T>::do_register_asset(metadata, asset_id)
 	}
@@ -220,7 +218,7 @@ impl<T: Config> Mutate for Pallet<T> {
 		name: Option<BoundedVec<u8, Self::StringLimit>>,
 		symbol: Option<BoundedVec<u8, Self::StringLimit>>,
 		existential_deposit: Option<Self::Balance>,
-		location: Option<Option<VersionedLocation>>,
+		location: Option<Option<T::AssetLocation>>,
 		additional: Option<Self::CustomMetadata>,
 	) -> DispatchResult {
 		Pallet::<T>::do_update_asset(
