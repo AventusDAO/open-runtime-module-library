@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use sp_core::bounded::BoundedVec;
 use sp_io::TestExternalities;
 use sp_runtime::{traits::Convert, AccountId32, BuildStorage};
+use orml_traits::asset_registry::AvnAssetLocation;
 use xcm::{
-	v3,
+	v3::{self, prelude::{Junction, Parent, Parachain}},
 	v5::{Asset, Location},
 };
 use xcm_simulator::{decl_test_network, decl_test_parachain, decl_test_relay_chain, TestExt};
@@ -108,7 +109,10 @@ impl Convert<CurrencyId, Option<Location>> for CurrencyIdConvert {
 				)
 					.into(),
 			),
-			CurrencyId::RegisteredAsset(id) => AssetRegistry::location(&id).unwrap_or_default(),
+			CurrencyId::RegisteredAsset(id) => match AssetRegistry::location(&id).unwrap_or_default() {
+				Some(AvnAssetLocation::Xcm(versioned)) => versioned.try_into().ok(),
+				_ => None,
+			},
 		};
 		loc.and_then(|l| l.into_versioned().try_into().ok())
 	}
@@ -148,8 +152,8 @@ impl Convert<Location, Option<CurrencyId>> for CurrencyIdConvert {
 			_ => None,
 		};
 		currency_id.or_else(|| {
-			let loc = v3::Location::try_from(l.into_versioned()).ok()?;
-			AssetRegistry::location_to_asset_id(&loc).map(CurrencyId::RegisteredAsset)
+			let asset_loc = AvnAssetLocation::Xcm(l.into_versioned());
+			AssetRegistry::location_to_asset_id(&asset_loc).map(CurrencyId::RegisteredAsset)
 		})
 	}
 }
@@ -206,7 +210,7 @@ decl_test_parachain! {
 		new_ext = para_ext(4, Some((
 			vec![(
 				4,
-				AssetMetadata::<Balance, para::CustomMetadata, para::StringLimit>::encode(&AssetMetadata {
+				AssetMetadata::<Balance, para::CustomMetadata, AvnAssetLocation, para::StringLimit>::encode(&AssetMetadata {
 				decimals: 12,
 				name: BoundedVec::truncate_from("para G native token".as_bytes().to_vec()),
 				symbol: BoundedVec::truncate_from("paraG".as_bytes().to_vec()),
@@ -218,7 +222,7 @@ decl_test_parachain! {
 			})),
 			(
 				5,
-				AssetMetadata::<Balance, para::CustomMetadata, para::StringLimit>::encode(&AssetMetadata {
+				AssetMetadata::<Balance, para::CustomMetadata, AvnAssetLocation, para::StringLimit>::encode(&AssetMetadata {
 				decimals: 12,
 				name: BoundedVec::truncate_from("para G foreign token".as_bytes().to_vec()),
 				symbol: BoundedVec::truncate_from("paraF".as_bytes().to_vec()),
