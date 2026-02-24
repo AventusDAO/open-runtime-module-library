@@ -16,7 +16,7 @@ use sp_runtime::{
 use sp_std::prelude::*;
 
 pub use impls::*;
-use module::*;
+pub use module::*;
 pub use weights::WeightInfo;
 
 mod impls;
