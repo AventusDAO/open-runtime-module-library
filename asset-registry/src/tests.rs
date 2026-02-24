@@ -8,7 +8,7 @@ use crate::{
 };
 use frame_support::{assert_noop, assert_ok, pallet_prelude::*};
 use mock::{para::RuntimeCall, *};
-use orml_traits::asset_registry::AssetMetadata;
+use orml_traits::asset_registry::{AssetMetadata, AvnAssetLocation};
 use orml_traits::MultiCurrency;
 use polkadot_parachain_primitives::primitives::Sibling;
 use scale_info::TypeInfo;
@@ -17,7 +17,7 @@ use sp_runtime::{
 	traits::{AccountIdConversion, BadOrigin, Dispatchable},
 	AccountId32,
 };
-use xcm::{v3, v5::prelude::*, VersionedLocation};
+use xcm::{v5::prelude::*, VersionedLocation};
 use xcm_simulator::TestExt;
 
 fn treasury_account() -> AccountId32 {
@@ -49,19 +49,17 @@ fn print_events<Runtime: frame_system::Config>(name: &'static str) {
 fn dummy_metadata() -> AssetMetadata<
 	<para::Runtime as orml_asset_registry::Config>::Balance,
 	CustomMetadata,
+	<para::Runtime as orml_asset_registry::Config>::AssetLocation,
 	<para::Runtime as orml_asset_registry::Config>::StringLimit,
 > {
-	let loc: VersionedLocation = Location::new(
-		1,
-		[Parachain(1), Junction::from(BoundedVec::try_from(vec![0]).unwrap())],
-	)
-	.into();
 	AssetMetadata {
 		decimals: 12,
 		name: BoundedVec::truncate_from("para A native token".as_bytes().to_vec()),
 		symbol: BoundedVec::truncate_from("paraA".as_bytes().to_vec()),
 		existential_deposit: 0,
-		location: Some(loc),
+		location: Some(AvnAssetLocation::Xcm(
+			Location::new(1, [Parachain(1), Junction::from(BoundedVec::try_from(vec![0]).unwrap())]).into(),
+		)),
 		additional: CustomMetadata {
 			fee_per_second: 1_000_000_000_000,
 		},
@@ -111,10 +109,9 @@ fn send_self_parachain_asset_to_sibling() {
 	});
 
 	ParaA::execute_with(|| {
-		metadata.location = Some(Into::<VersionedLocation>::into(Location::new(
-			0,
-			[Junction::from(BoundedVec::try_from(vec![0]).unwrap())],
-		)));
+		metadata.location = Some(AvnAssetLocation::Xcm(
+			Location::new(0, [Junction::from(BoundedVec::try_from(vec![0]).unwrap())]).into(),
+		));
 		AssetRegistry::register_asset(RuntimeOrigin::root(), metadata, None).unwrap();
 
 		assert_ok!(ParaTokens::deposit(CurrencyId::RegisteredAsset(1), &ALICE, 1_000));
@@ -166,13 +163,9 @@ fn send_sibling_asset_to_non_reserve_sibling() {
 		AssetRegistry::register_asset(
 			RuntimeOrigin::root(),
 			AssetMetadata {
-				location: Some(
-					Location::new(
-						1,
-						[Parachain(2), Junction::from(BoundedVec::try_from(vec![0]).unwrap())],
-					)
-					.into(),
-				),
+				location: Some(AvnAssetLocation::Xcm(
+					Location::new(1, [Parachain(2), Junction::from(BoundedVec::try_from(vec![0]).unwrap())]).into(),
+				)),
 				..dummy_metadata()
 			},
 			None,
@@ -185,7 +178,7 @@ fn send_sibling_asset_to_non_reserve_sibling() {
 		AssetRegistry::register_asset(
 			RuntimeOrigin::root(),
 			AssetMetadata {
-				location: Some(Location::new(0, [Junction::from(BoundedVec::try_from(vec![0]).unwrap())]).into()),
+				location: Some(AvnAssetLocation::Xcm(Location::new(0, [Junction::from(BoundedVec::try_from(vec![0]).unwrap())]).into())),
 				..dummy_metadata()
 			},
 			None,
@@ -202,13 +195,9 @@ fn send_sibling_asset_to_non_reserve_sibling() {
 		AssetRegistry::register_asset(
 			RuntimeOrigin::root(),
 			AssetMetadata {
-				location: Some(
-					Location::new(
-						1,
-						[Parachain(2), Junction::from(BoundedVec::try_from(vec![0]).unwrap())],
-					)
-					.into(),
-				),
+				location: Some(AvnAssetLocation::Xcm(
+					Location::new(1, [Parachain(2), Junction::from(BoundedVec::try_from(vec![0]).unwrap())]).into(),
+				)),
 				..dummy_metadata()
 			},
 			None,
@@ -267,13 +256,9 @@ fn test_sequential_id_normal_behavior() {
 		let metadata2 = AssetMetadata {
 			name: BoundedVec::truncate_from("para A native token 2".as_bytes().to_vec()),
 			symbol: BoundedVec::truncate_from("paraA2".as_bytes().to_vec()),
-			location: Some(
-				Location::new(
-					1,
-					[Parachain(1), Junction::from(BoundedVec::try_from(vec![1]).unwrap())],
-				)
-				.into(),
-			),
+			location: Some(AvnAssetLocation::Xcm(
+				Location::new(1, [Parachain(1), Junction::from(BoundedVec::try_from(vec![1]).unwrap())]).into(),
+			)),
 			..dummy_metadata()
 		};
 		AssetRegistry::register_asset(RuntimeOrigin::root(), metadata1.clone(), None).unwrap();
@@ -314,7 +299,7 @@ fn test_fixed_rate_asset_trader() {
 
 	ParaA::execute_with(|| {
 		let para_a_metadata = AssetMetadata {
-			location: Some(Location::new(0, [Junction::from(BoundedVec::try_from(vec![0]).unwrap())]).into()),
+			location: Some(AvnAssetLocation::Xcm(Location::new(0, [Junction::from(BoundedVec::try_from(vec![0]).unwrap())]).into())),
 			..metadata.clone()
 		};
 		AssetRegistry::register_asset(RuntimeOrigin::root(), para_a_metadata, None).unwrap();
@@ -466,13 +451,9 @@ fn test_update_metadata_works() {
 			name: BoundedVec::truncate_from("para A native token2".as_bytes().to_vec()),
 			symbol: BoundedVec::truncate_from("paraA2".as_bytes().to_vec()),
 			existential_deposit: 1,
-			location: Some(
-				Location::new(
-					1,
-					[Parachain(1), Junction::from(BoundedVec::try_from(vec![1]).unwrap())],
-				)
-				.into(),
-			),
+			location: Some(AvnAssetLocation::Xcm(
+				Location::new(1, [Parachain(1), Junction::from(BoundedVec::try_from(vec![1]).unwrap())]).into(),
+			)),
 			additional: CustomMetadata {
 				fee_per_second: 2_000_000_000_000,
 			},
@@ -488,8 +469,8 @@ fn test_update_metadata_works() {
 			Some(new_metadata.additional.clone())
 		));
 
-		let old_location: v3::Location = old_metadata.location.unwrap().try_into().unwrap();
-		let new_location: v3::Location = new_metadata.location.clone().unwrap().try_into().unwrap();
+		let old_location = old_metadata.location.unwrap();
+		let new_location = new_metadata.location.clone().unwrap();
 
 		// check that the old location was removed and the new one added
 		assert_eq!(AssetRegistry::location_to_asset_id(old_location), None);
@@ -588,7 +569,7 @@ fn test_decode_bounded_vec() {
 		#[frame_support::storage_alias]
 		pub type Metadata<T: orml_asset_registry::Config> = StorageMap<
 			orml_asset_registry::Pallet<T>,
-			Twox64Concat,
+			Blake2_128Concat,
 			<T as orml_asset_registry::Config>::AssetId,
 			AssetMetadata<
 				<T as orml_asset_registry::Config>::Balance,
