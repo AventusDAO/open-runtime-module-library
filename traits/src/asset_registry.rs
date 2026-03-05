@@ -4,6 +4,8 @@ use sp_std::fmt::Debug;
 use xcm::v5::prelude::*;
 use xcm::VersionedLocation;
 use sp_core::H160;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 
 pub trait WeightToFeeConverter {
 	fn convert_weight_to_fee(location: &Location, weight: Weight) -> Option<u128>;
@@ -21,8 +23,10 @@ pub trait AssetProcessor<AssetId, Metadata> {
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Encode, Decode, DecodeWithMemTracking, MaxEncodedLen, TypeInfo)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum AvnAssetLocation {
     /// A Polkadot XCM location (relay chain assets, other parachain tokens, etc.)
+	#[cfg_attr(feature = "std", serde(skip))]
     Xcm(VersionedLocation),
     /// An Ethereum token contract address
     Ethereum(H160),
