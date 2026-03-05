@@ -44,6 +44,7 @@ pub enum AvnAssetLocation {
 	MaxEncodedLen,
 	DecodeWithMemTracking,
 )]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[codec(mel_bound(skip_type_params(StringLimit)))]
 #[scale_info(skip_type_params(StringLimit))]
 pub struct AssetMetadata<Balance, CustomMetadata, Location, StringLimit: Get<u32>>
