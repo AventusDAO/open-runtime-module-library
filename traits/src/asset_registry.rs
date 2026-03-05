@@ -120,6 +120,7 @@ pub trait Mutate<Location: Parameter + Member + TypeInfo>: Inspect<Location> {
 	MaxEncodedLen,
 	DecodeWithMemTracking,
 )]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct AvnAssetMetadata {
     /// Flag indicating whether this asset is the native token of an appchain.
     pub appchain_native: bool,
