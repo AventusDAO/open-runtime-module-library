@@ -47,6 +47,10 @@ pub enum AvnAssetLocation {
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[codec(mel_bound(skip_type_params(StringLimit)))]
 #[scale_info(skip_type_params(StringLimit))]
+#[cfg_attr(feature = "std", serde(bound(
+    serialize = "Balance: serde::Serialize, CustomMetadata: serde::Serialize, Location: serde::Serialize",
+    deserialize = "Balance: serde::Deserialize<'de>, CustomMetadata: serde::Deserialize<'de>, Location: serde::Deserialize<'de>",
+)))]
 pub struct AssetMetadata<Balance, CustomMetadata, Location, StringLimit: Get<u32>>
 where
 	Balance: Clone + Debug + Eq + PartialEq,
